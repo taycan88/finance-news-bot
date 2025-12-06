@@ -4,7 +4,7 @@ import time
 import json
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Configuration
 # Intentamos leer de variables de entorno (Mejor para GitHub Actions), si no, usamos los valores hardcodeados (Local)
@@ -49,6 +49,9 @@ def send_telegram_message(message):
 
 def fetch_and_process_news(sent_news):
     new_articles_count = 0
+    # Safety: Only look back ~2.5 hours to overlap slightly but avoid old news if state fails
+    cutoff_time = datetime.utcnow() - datetime.timedelta(minutes=150)
+
     for ticker_symbol in TICKERS:
         logging.info(f"Checking news for {ticker_symbol}...")
         try:
@@ -57,31 +60,45 @@ def fetch_and_process_news(sent_news):
             
             for item in news_items:
                 # Handle nested structure
-                if 'content' in item:
-                    content = item['content']
-                    article_id = item.get('id')
-                    title = content.get('title', 'No Title')
-                    link = content.get('clickThroughUrl', {}).get('url')
-                    if not link:
-                        link = content.get('canonicalUrl', {}).get('url')
-                    publisher = content.get('provider', {}).get('displayName', 'Unknown')
-                    pub_date = content.get('pubDate', '')
-                    time_str = pub_date.replace('T', ' ').replace('Z', '')
-                else:
-                    # Fallback
-                    article_id = item.get('uuid') or item.get('link')
-                    title = item.get('title', 'No Title')
-                    link = item.get('link', '')
-                    publisher = item.get('publisher', 'Unknown')
-                    publish_time = item.get('providerPublishTime', 0)
-                    time_str = datetime.fromtimestamp(publish_time).strftime("%Y-%m-%d %H:%M") if publish_time else "Recent"
+                content = item.get('content', {})
+                if not content: content = item
 
-                # Use URL as the unique identifier (more robust than ID for users seeing "same URL")
-                unique_id = link
-                if not unique_id:
-                     unique_id = article_id # Fallback
+                title = content.get('title', item.get('title', 'No Title'))
                 
-                if unique_id not in sent_news:
+                # Get Link (Unique ID)
+                link = content.get('clickThroughUrl', {}).get('url')
+                if not link: link = content.get('canonicalUrl', {}).get('url')
+                if not link: link = item.get('link')
+                
+                # Get Date
+                pub_date = content.get('pubDate') or item.get('providerPublishTime')
+                article_dt = None
+
+                try:
+                    if isinstance(pub_date, int):
+                         article_dt = datetime.fromtimestamp(pub_date)
+                    elif isinstance(pub_date, str):
+                         # Handle typical ISO formats
+                         # Example: '2025-12-06T18:35:00Z'
+                         clean_date = pub_date.replace('Z', '')
+                         if '.' in clean_date: clean_date = clean_date.split('.')[0]
+                         article_dt = datetime.strptime(clean_date, "%Y-%m-%dT%H:%M:%S")
+                except Exception as e:
+                    logging.warning(f"Date parse error for {title}: {e}")
+                    continue
+
+                # Filter by Time
+                if article_dt and article_dt < cutoff_time:
+                    logging.info(f"Skipping old article: {title} ({article_dt})")
+                    continue
+
+                # Deduplicate by Link (or ID fallback)
+                unique_id = link or item.get('id') or item.get('uuid')
+                
+                if unique_id and unique_id not in sent_news:
+                    publisher = content.get('provider', {}).get('displayName') or item.get('publisher', 'Unknown')
+                    time_str = article_dt.strftime("%Y-%m-%d %H:%M") if article_dt else "Recent"
+
                     message = (
                         f"<b>{title}</b>\n\n"
                         f"Target: #{ticker_symbol}\n"
@@ -94,7 +111,7 @@ def fetch_and_process_news(sent_news):
                     if send_telegram_message(message):
                         sent_news.add(unique_id)
                         new_articles_count += 1
-                        time.sleep(1) # Rate limiting
+                        time.sleep(1) 
         
         except Exception as e:
             logging.error(f"Error fetching news for {ticker_symbol}: {e}")

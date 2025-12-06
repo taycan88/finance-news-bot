@@ -18,7 +18,7 @@ git branch -M main
 git add .
 
 :: Commit
-git commit -m "Sync fixes: 2h frequency and URL deduplication"
+git commit -m "Improve time filtering (last 2.5h) and robust date parsing"
 
 :: Push with force to ensure cloud matches local code exactly
 git push -u origin main --force
