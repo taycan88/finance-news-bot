@@ -49,10 +49,7 @@ def send_telegram_message(message):
 
 def fetch_and_process_news(sent_news):
     new_articles_count = 0
-    # Stateless: Look back exactly 2 hours (120 mins) to match schedule.
-    # Risk: If run triggers late (e.g. 10 mins late), we miss 10 mins of news.
-    # Benefit: No duplicates and no file permission errors.
-    cutoff_time = datetime.utcnow() - datetime.timedelta(minutes=120)
+    cutoff_time = datetime.now() - timedelta(hours=24) # Safety net: Don't go back further than 24h
 
     for ticker_symbol in TICKERS:
         logging.info(f"Checking news for {ticker_symbol}...")
@@ -68,8 +65,8 @@ def fetch_and_process_news(sent_news):
                 title = content.get('title', item.get('title', 'No Title'))
                 
                 # Get Link (Unique ID)
-                link = content.get('clickThroughUrl', {}).get('url')
-                if not link: link = content.get('canonicalUrl', {}).get('url')
+                link = (content.get('clickThroughUrl') or {}).get('url')
+                if not link: link = (content.get('canonicalUrl') or {}).get('url')
                 if not link: link = item.get('link')
                 
                 # Get Date
@@ -89,10 +86,9 @@ def fetch_and_process_news(sent_news):
                     logging.warning(f"Date parse error for {title}: {e}")
                     continue
 
-                # Filter by Time
+                # Filter by Time (Safety Net)
                 if article_dt and article_dt < cutoff_time:
-                    logging.info(f"Skipping old article: {title} ({article_dt})")
-                    continue
+                   continue
 
                 # Deduplicate by Link (or ID fallback)
                 unique_id = link or item.get('id') or item.get('uuid')
@@ -121,17 +117,19 @@ def fetch_and_process_news(sent_news):
     return new_articles_count
 
 def main():
-    logging.info("Starting Finance News Bot (Stateless)...")
-    # No state file used. We rely on the time window matching the cron schedule (2 hours).
-    # Cutoff is 120 minutes.
+    logging.info("Starting Finance News Bot...")
     
-    sent_news = set()
+    # LOAD STATE
+    sent_news = load_sent_news()
+    logging.info(f"Loaded {len(sent_news)} previously sent articles.")
     
     # Run process
     count = fetch_and_process_news(sent_news)
     
+    # SAVE STATE
     if count > 0:
-        logging.info(f"Sent {count} new articles.")
+        save_sent_news(sent_news)
+        logging.info(f"Sent {count} new articles. State updated.")
     else:
         logging.info("No new articles found.")
 
