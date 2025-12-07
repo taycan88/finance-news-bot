@@ -125,7 +125,7 @@ def main():
     logging.info("Starting Finance News Bot...")
     
     # Test Message to debug connectivity
-    send_telegram_message("📢 Bot started! Checking for news...")
+    # send_telegram_message("📢 Bot started! Checking for news...")
     
     # LOAD STATE
     sent_news = load_sent_news()

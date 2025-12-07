@@ -2,7 +2,7 @@ name: Run Tech News Bot
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Cada 15 minutos
+    - cron: '0 */2 * * *'  # Cada 2 horas
   workflow_dispatch:  # Permite ejecución manual desde la pestaña Actions
 
 jobs:
