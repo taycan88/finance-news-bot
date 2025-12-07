@@ -25,4 +25,10 @@ git push -u origin main --force
 
 echo.
 echo Done!
+git add .
+git commit -m "Fix GitHub Actions: Remove stateful commit and fix indentation"
+git push
+
+echo.
+echo Fixed and Pushed!
 pause

@@ -49,8 +49,10 @@ def send_telegram_message(message):
 
 def fetch_and_process_news(sent_news):
     new_articles_count = 0
-    # Safety: Only look back ~2.5 hours to overlap slightly but avoid old news if state fails
-    cutoff_time = datetime.utcnow() - datetime.timedelta(minutes=150)
+    # Stateless: Look back exactly 2 hours (120 mins) to match schedule.
+    # Risk: If run triggers late (e.g. 10 mins late), we miss 10 mins of news.
+    # Benefit: No duplicates and no file permission errors.
+    cutoff_time = datetime.utcnow() - datetime.timedelta(minutes=120)
 
     for ticker_symbol in TICKERS:
         logging.info(f"Checking news for {ticker_symbol}...")
@@ -119,14 +121,17 @@ def fetch_and_process_news(sent_news):
     return new_articles_count
 
 def main():
-    logging.info("Starting Finance News Bot (Single Execution)...")
-    sent_news = load_sent_news()
+    logging.info("Starting Finance News Bot (Stateless)...")
+    # No state file used. We rely on the time window matching the cron schedule (2 hours).
+    # Cutoff is 120 minutes.
     
+    sent_news = set()
+    
+    # Run process
     count = fetch_and_process_news(sent_news)
     
     if count > 0:
-        save_sent_news(sent_news)
-        logging.info(f"Sent {count} new articles. State updated.")
+        logging.info(f"Sent {count} new articles.")
     else:
         logging.info("No new articles found.")
 
