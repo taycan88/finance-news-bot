@@ -7,9 +7,14 @@ import logging
 from datetime import datetime, timedelta
 
 # Configuration
-# Intentamos leer de variables de entorno (Mejor para GitHub Actions), si no, usamos los valores hardcodeados (Local)
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8563713892:AAEYJwvHcMw6qKN8hMg1PkcCgRtD20VOISQ")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1659649643")
+# Intentamos leer de variables de entorno, pero si estan vacias (GitHub Actions sin secrets), usamos los valores hardcodeados
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not TELEGRAM_BOT_TOKEN:
+    TELEGRAM_BOT_TOKEN = "8563713892:AAEYJwvHcMw6qKN8hMg1PkcCgRtD20VOISQ"
+
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+if not TELEGRAM_CHAT_ID:
+    TELEGRAM_CHAT_ID = "1659649643"
 TICKERS = ['AMZN', 'META', 'GOOGL', 'ASML', 'MSFT']
 STATE_FILE = "state.json"
 
