@@ -119,6 +119,9 @@ def fetch_and_process_news(sent_news):
 def main():
     logging.info("Starting Finance News Bot...")
     
+    # Test Message to debug connectivity
+    send_telegram_message("📢 Bot started! Checking for news...")
+    
     # LOAD STATE
     sent_news = load_sent_news()
     logging.info(f"Loaded {len(sent_news)} previously sent articles.")
