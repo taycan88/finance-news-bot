@@ -6,6 +6,8 @@ import os
 import logging
 from datetime import datetime, timedelta
 
+import google.generativeai as genai
+
 # Configuration
 # Intentamos leer de variables de entorno, pero si estan vacias (GitHub Actions sin secrets), usamos los valores hardcodeados
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -15,6 +17,8 @@ if not TELEGRAM_BOT_TOKEN:
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 if not TELEGRAM_CHAT_ID:
     TELEGRAM_CHAT_ID = "1659649643"
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
 TICKERS = ['AMZN', 'META', 'GOOGL', 'ASML', 'MSFT']
 STATE_FILE = "state.json"
 
@@ -23,6 +27,19 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+# AI Setup
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        logging.info("Gemini AI configured successfully.")
+    except Exception as e:
+        logging.error(f"Failed to configure Gemini AI: {e}")
+        model = None
+else:
+    logging.warning("GEMINI_API_KEY not found. AI filtering will be disabled.")
+    model = None
 
 def load_sent_news():
     if os.path.exists(STATE_FILE):
@@ -52,9 +69,31 @@ def send_telegram_message(message):
         logging.error(f"Failed to send Telegram message: {e}")
         return False
 
+def analyze_relevance(ticker, title):
+    if not model:
+        return True # Default to sending if AI is down
+    
+    try:
+        prompt = (
+            f"Act as a financial analyst. Does the news title '{title}' have a material impact "
+            f"on the stock valuation or business outlook of {ticker}? "
+            "Reply strictly with YES or NO."
+        )
+        response = model.generate_content(prompt)
+        answer = response.text.strip().upper()
+        
+        if "YES" in answer:
+            return True
+        else:
+            logging.info(f"AI Filtered out: {title} (Impact: Low/None)")
+            return False
+    except Exception as e:
+        logging.error(f"AI Analysis failed for {title}: {e}")
+        return True # Fallback to sending
+
 def fetch_and_process_news(sent_news):
     new_articles_count = 0
-    cutoff_time = datetime.now() - timedelta(hours=24) # Safety net: Don't go back further than 24h
+    cutoff_time = datetime.now() - timedelta(hours=24) # Safety net
 
     for ticker_symbol in TICKERS:
         logging.info(f"Checking news for {ticker_symbol}...")
@@ -82,8 +121,6 @@ def fetch_and_process_news(sent_news):
                     if isinstance(pub_date, int):
                          article_dt = datetime.fromtimestamp(pub_date)
                     elif isinstance(pub_date, str):
-                         # Handle typical ISO formats
-                         # Example: '2025-12-06T18:35:00Z'
                          clean_date = pub_date.replace('Z', '')
                          if '.' in clean_date: clean_date = clean_date.split('.')[0]
                          article_dt = datetime.strptime(clean_date, "%Y-%m-%dT%H:%M:%S")
@@ -91,14 +128,17 @@ def fetch_and_process_news(sent_news):
                     logging.warning(f"Date parse error for {title}: {e}")
                     continue
 
-                # Filter by Time (Safety Net)
                 if article_dt and article_dt < cutoff_time:
                    continue
 
-                # Deduplicate by Link (or ID fallback)
                 unique_id = link or item.get('id') or item.get('uuid')
                 
                 if unique_id and unique_id not in sent_news:
+                    # AI CHECK
+                    if not analyze_relevance(ticker_symbol, title):
+                        sent_news.add(unique_id) # Mark as read so we don't re-check forever
+                        continue
+                    
                     publisher = content.get('provider', {}).get('displayName') or item.get('publisher', 'Unknown')
                     time_str = article_dt.strftime("%Y-%m-%d %H:%M") if article_dt else "Recent"
 
@@ -123,9 +163,7 @@ def fetch_and_process_news(sent_news):
 
 def main():
     logging.info("Starting Finance News Bot...")
-    
-    # Test Message to debug connectivity
-    # send_telegram_message("📢 Bot started! Checking for news...")
+    # send_telegram_message("📢 Bot started! Checking for news...") # Debug msg
     
     # LOAD STATE
     sent_news = load_sent_news()

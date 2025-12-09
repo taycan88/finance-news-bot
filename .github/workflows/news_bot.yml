@@ -2,7 +2,7 @@ name: Run Tech News Bot
 
 on:
   schedule:
-    - cron: '0 */2 * * *'  # Cada 2 horas
+    - cron: '0 */3 * * *'  # Cada 3 horas
   workflow_dispatch:  # Permite ejecución manual desde la pestaña Actions
 
 jobs:
@@ -29,6 +29,7 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python main.py
 
     - name: Commit and Push state
