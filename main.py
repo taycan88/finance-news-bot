@@ -94,6 +94,9 @@ def analyze_relevance(ticker, title):
 def fetch_and_process_news(sent_news):
     new_articles_count = 0
     cutoff_time = datetime.now() - timedelta(hours=24) # Safety net
+    
+    # List to collect all potential messages: (datetime, unique_id, message_text, title)
+    collected_messages = []
 
     for ticker_symbol in TICKERS:
         logging.info(f"Checking news for {ticker_symbol}...")
@@ -150,14 +153,32 @@ def fetch_and_process_news(sent_news):
                         f"{link}"
                     )
                     
-                    logging.info(f"Sending news: {title}")
-                    if send_telegram_message(message):
-                        sent_news.add(unique_id)
-                        new_articles_count += 1
-                        time.sleep(1) 
+                    # Add to collection for sorting
+                    # Standardize article_dt for sorting. If None, use min time to put it first (or max to last)
+                    # Using timestamp 0 for safety if None, though logic above requires article_dt or "Recent"
+                    sort_key = article_dt if article_dt else datetime.min
+                    collected_messages.append({
+                        'dt': sort_key,
+                        'id': unique_id,
+                        'msg': message,
+                        'title': title
+                    })
         
         except Exception as e:
             logging.error(f"Error fetching news for {ticker_symbol}: {e}")
+            
+    # SORTING: Oldest to Newest
+    collected_messages.sort(key=lambda x: x['dt'])
+    
+    # SENDING
+    if collected_messages:
+        logging.info(f"Found {len(collected_messages)} relevant articles. Sending in chronological order...")
+        for item in collected_messages:
+            logging.info(f"Sending news ({item['dt']}): {item['title']}")
+            if send_telegram_message(item['msg']):
+                sent_news.add(item['id'])
+                new_articles_count += 1
+                time.sleep(1)
             
     return new_articles_count
 
