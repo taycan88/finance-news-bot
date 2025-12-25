@@ -98,6 +98,8 @@ def fetch_and_process_news(sent_news):
     # List to collect all potential messages: (datetime, unique_id, message_text, title)
     collected_messages = []
 
+    seen_this_run = set()
+
     for ticker_symbol in TICKERS:
         logging.info(f"Checking news for {ticker_symbol}...")
         try:
@@ -115,6 +117,10 @@ def fetch_and_process_news(sent_news):
                 link = (content.get('clickThroughUrl') or {}).get('url')
                 if not link: link = (content.get('canonicalUrl') or {}).get('url')
                 if not link: link = item.get('link')
+
+                # Normalize Link (remove query params for better dedupe)
+                if link and '?' in link:
+                    link = link.split('?')[0]
                 
                 # Get Date
                 pub_date = content.get('pubDate') or item.get('providerPublishTime')
@@ -136,7 +142,15 @@ def fetch_and_process_news(sent_news):
 
                 unique_id = link or item.get('id') or item.get('uuid')
                 
-                if unique_id and unique_id not in sent_news:
+                if unique_id:
+                    # Dedupe Logic
+                    if unique_id in sent_news:
+                        continue
+                    if unique_id in seen_this_run:
+                        continue
+                    
+                    seen_this_run.add(unique_id)
+
                     # AI CHECK
                     if not analyze_relevance(ticker_symbol, title):
                         sent_news.add(unique_id) # Mark as read so we don't re-check forever
